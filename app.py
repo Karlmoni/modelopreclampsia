@@ -183,49 +183,85 @@ with T2:
 
 
 # ======================================================================
-# TAB 3 — IMPORTANCIA DE VARIABLES (CORREGIDO)
+# TAB 3 — IMPORTANCIA DE VARIABLES (Método Alternativo Compatible)
 # ======================================================================
 with T3:
 
-    st.header("📊 Importancia de Variables (Permutation Importance)")
+    st.header("📊 Importancia de Variables")
 
-    st.write(
-        "Este gráfico muestra cuánto afecta cada variable a la predicción cuando se altera su valor."
+    st.info(
+        """
+        ### 🧠 ¿Qué significa esta gráfica?
+
+        Este análisis muestra **qué tan sensible es el modelo** frente a cada variable.
+        El procedimiento es el siguiente:
+
+        1. Se crea un registro clínico *neutro* con valores base.
+        2. Se modifica **solo una variable a la vez**.
+        3. Se calcula nuevamente la probabilidad de riesgo.
+        4. La diferencia obtenida representa la **importancia** de esa variable.
+
+        **Interpretación:**
+        - Barras **altas y positivas** → esa variable aumenta el riesgo cuando cambia.
+        - Barras **pequeñas** → la variable tiene poco impacto en la predicción.
+        - Barras **negativas** (si las hubiera) → al modificar esa variable, el riesgo baja.
+
+        > 🔍 *Este método es totalmente compatible con pipelines que incluyen 
+        OneHotEncoder, StandardScaler y modelos entrenados con SMOTE.*
+        """
     )
 
-    # ---------------------------------------
-    # 1. Crear un dataset sintético válido
-    # ---------------------------------------
-    base_row = {}
+    st.write("### Sensibilidad del Modelo")
 
+    # ---------------------------------------
+    # 1. Crear registro neutro
+    # ---------------------------------------
+    base = {}
     for col in FEATURES:
         if isinstance(INPUT_SCHEMA[col], str) and INPUT_SCHEMA[col] == "string":
-            base_row[col] = "NO"
+            base[col] = "NO"      # categoría base
         else:
-            base_row[col] = 0
+            base[col] = 0         # valor numérico base
 
-    df_example = pd.DataFrame([base_row] * 30)  # 30 filas idénticas
-
-    # ---------------------------------------
-    # 2. Calcular permutation importance
-    # ---------------------------------------
-    result = permutation_importance(
-        PIPE,
-        df_example,
-        PIPE.predict_proba,
-        n_repeats=10,
-        random_state=42
-    )
-
-    importances = result.importances_mean
+    df_base = pd.DataFrame([base])
+    proba_base = PIPE.predict_proba(df_base)[0][1]
 
     # ---------------------------------------
-    # 3. Graficar
+    # 2. Calcular importancia de cada variable
+    # ---------------------------------------
+    impacts = []
+    for col in FEATURES:
+
+        df_temp = df_base.copy()
+
+        # Alterar variable según tipo
+        if isinstance(INPUT_SCHEMA[col], str) and INPUT_SCHEMA[col] == "string":
+            df_temp[col] = "SI"
+        else:
+            df_temp[col] = df_temp[col] + 1
+
+        proba_new = PIPE.predict_proba(df_temp)[0][1]
+
+        impacts.append({
+            "Variable": col,
+            "Impacto": float(proba_new - proba_base)
+        })
+
+    impacts_df = pd.DataFrame(impacts).sort_values("Impacto", ascending=False)
+
+    # ---------------------------------------
+    # 3. Gráfico
     # ---------------------------------------
     fig, ax = plt.subplots(figsize=(9, 4))
-    ax.bar(FEATURES, importances, color="#0077cc")
+    ax.bar(impacts_df["Variable"], impacts_df["Impacto"], color="#0077cc")
     ax.set_title("Importancia de cada variable en la predicción")
-    ax.set_ylabel("Puntuación de importancia")
-    ax.set_xticklabels(FEATURES, rotation=45, ha="right")
+    ax.set_ylabel("Cambio en probabilidad")
+    ax.set_xticklabels(impacts_df["Variable"], rotation=45, ha="right")
 
     st.pyplot(fig)
+
+    # ---------------------------------------
+    # 4. Tabla final
+    # ---------------------------------------
+    st.write("### Tabla de importancia (ordenada)")
+    st.dataframe(impacts_df)
