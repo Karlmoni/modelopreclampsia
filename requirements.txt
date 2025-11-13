@@ -6,4 +6,4 @@ imbalanced-learn==0.12.3
 joblib==1.4.2
 catboost==1.2.8
 shap==0.44.1
-lime
+matplotlib==3.7.1
