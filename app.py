@@ -4,7 +4,6 @@ import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
 
 # =====================================================
 # CONFIGURACIÓN GENERAL Y ENCABEZADO FIJO
@@ -72,10 +71,10 @@ st.sidebar.markdown(f"""
 """)
 
 # =====================================================
-# PESTAÑAS
+# PESTAÑAS (SOLO 2)
 # =====================================================
-T1, T2, T3 = st.tabs(
-    ["🩺 Predicción", "📘 Diseño del Modelo", "📊 Importancia de Variables"]
+T1, T2 = st.tabs(
+    ["🩺 Predicción", "📘 Diseño del Modelo"]
 )
 
 # =====================================================
@@ -118,6 +117,7 @@ with T1:
 
         df = pd.DataFrame([payload])
 
+        # Predicción
         proba = PIPE.predict_proba(df)[0][1]
         pred  = int(proba >= THRESHOLD)
         label = REV_LABEL[pred]
@@ -144,7 +144,7 @@ with T2:
 
     pos_label = [k for k, v in LABEL_MAP.items() if v == 1][0]
 
-    st.subheader("🧩 Información del pipeline")
+    st.subheader("🧩 Información del Pipeline")
 
     cfg_df = pd.DataFrame({
         "Parámetro": [
@@ -173,70 +173,3 @@ with T2:
 
     st.subheader("📁 Variables de Entrada")
     st.table(pd.DataFrame({"Variable": FEATURES}))
-
-# =====================================================
-# TAB 3 — IMPORTANCIA DE VARIABLES (CORREGIDO)
-# =====================================================
-with T3:
-
-    st.header("📊 Importancia de Variables")
-
-    st.info(
-        """
-        ### 🧠 ¿Qué significa esta gráfica?
-
-        Se toma un registro *neutro* y se modifica **una variable a la vez**.
-        Se mide cuánto cambia la probabilidad estimada.
-        
-        - Barras altas → variable aumenta el riesgo.
-        - Barras bajas → poca influencia.
-        - Compatible con pipelines con OneHotEncoder + StandardScaler + SMOTE.
-        """
-    )
-
-    st.write("### Sensibilidad del modelo")
-
-    # Obtener columnas categóricas desde el pipeline REAL
-    preprocessor = PIPE.named_steps["preprocessor"]
-    numeric_cols = preprocessor.transformers_[0][2]
-    categorical_cols = preprocessor.transformers_[1][2]
-
-    # Crear registro neutro correcto
-    base = {}
-    for col in FEATURES:
-        base[col] = "NO" if col in categorical_cols else 0
-
-    df_base = pd.DataFrame([base])
-    proba_base = PIPE.predict_proba(df_base)[0][1]
-
-    # Calcular impacto variable por variable
-    impacts = []
-    for col in FEATURES:
-
-        df_temp = df_base.copy()
-
-        if col in categorical_cols:
-            df_temp[col] = "SI"
-        else:
-            df_temp[col] = df_temp[col] + 1
-
-        proba_new = PIPE.predict_proba(df_temp)[0][1]
-
-        impacts.append({
-            "Variable": col,
-            "Impacto": float(proba_new - proba_base)
-        })
-
-    impacts_df = pd.DataFrame(impacts).sort_values("Impacto", ascending=False)
-
-    # Gráfico
-    fig, ax = plt.subplots(figsize=(9, 4))
-    ax.bar(impacts_df["Variable"], impacts_df["Impacto"], color="#0077cc")
-    ax.set_title("Importancia de cada variable")
-    ax.set_ylabel("Cambio en probabilidad")
-    ax.set_xticklabels(impacts_df["Variable"], rotation=45, ha="right")
-    st.pyplot(fig)
-
-    # Tabla final
-    st.write("### Tabla de importancia (ordenada)")
-    st.dataframe(impacts_df)
