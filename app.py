@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
-from sklearn.inspection import permutation_importance
 
 # =====================================================
 # CONFIGURACIÓN GENERAL Y ENCABEZADO FIJO
@@ -22,13 +21,11 @@ st.write(
 Esta aplicación usa un modelo de *Machine Learning* entrenado para estimar 
 el **riesgo de preeclampsia** en gestantes.
 
-> ⚠️ **Aviso importante:** esta herramienta es solo de apoyo académico y no reemplaza 
-> el criterio clínico ni la evaluación médica profesional.
 """
 )
 
 # =====================================================
-# CARGAR ARTEFACTOS
+# Cargar artefactos
 # =====================================================
 ART_DIR = os.path.join("artefactos", "v1")
 
@@ -59,12 +56,12 @@ def load_artifacts():
 PIPE, INPUT_SCHEMA, LABEL_MAP, REV_LABEL, THRESHOLD, FEATURES, POLICY = load_artifacts()
 
 # =====================================================
-# SIDEBAR
+# SIDEBAR INFO DEL MODELO
 # =====================================================
 st.sidebar.header("ℹ️ Información del modelo")
 st.sidebar.markdown(f"""
 **Modelo ganador:** `{POLICY['winner']}`  
-**Umbral de decisión:** `{THRESHOLD:.2f}`  
+**Umbral de decisión:** `{THRESHOLD:.2f}`
 
 **Métricas en test:**
 - F1 = `{POLICY['test_metrics']['f1']:.3f}`
@@ -75,15 +72,15 @@ st.sidebar.markdown(f"""
 """)
 
 # =====================================================
-# PESTAÑAS — LETRA Y TAMAÑO IGUAL
+# PESTAÑAS
 # =====================================================
 T1, T2, T3 = st.tabs(
     ["🩺 Predicción", "📘 Diseño del Modelo", "📊 Importancia de Variables"]
 )
 
-# ======================================================================
+# =====================================================
 # TAB 1 — PREDICCIÓN
-# ======================================================================
+# =====================================================
 with T1:
 
     st.subheader("📋 Ingrese los datos clínicos de la paciente")
@@ -94,8 +91,8 @@ with T1:
         with col1:
             edad = st.number_input("Edad (años)", 10, 60, 30)
             imc = st.number_input("IMC", 10.0, 60.0, 25.0, 0.1)
-            p_sis = st.number_input("Presión arterial sistólica", 70, 250, 120)
-            p_dia = st.number_input("Presión arterial diastólica", 40, 150, 80)
+            p_sis = st.number_input("Presión arterial sistólica (mmHg)", 70, 250, 120)
+            p_dia = st.number_input("Presión arterial diastólica (mmHg)", 40, 150, 80)
 
         with col2:
             hipertension = st.selectbox("Antecedente de hipertensión", ["NO", "SI"])
@@ -106,7 +103,6 @@ with T1:
 
         submitted = st.form_submit_button("Calcular riesgo")
 
-    # Predicción
     if submitted:
         payload = {
             "edad": edad,
@@ -121,33 +117,34 @@ with T1:
         }
 
         df = pd.DataFrame([payload])
+
         proba = PIPE.predict_proba(df)[0][1]
-        pred = int(proba >= THRESHOLD)
+        pred  = int(proba >= THRESHOLD)
         label = REV_LABEL[pred]
 
         st.markdown("---")
         st.subheader("🔍 Resultado del modelo")
 
         if label == "RIESGO":
-            st.error(f"**Clasificación:** {label}\n\nProbabilidad: **{proba*100:.2f}%**")
+            st.error(f"**Clasificación:** {label}\n\nProbabilidad estimada: **{proba*100:.2f}%**")
         else:
-            st.success(f"**Clasificación:** {label}\n\nProbabilidad: **{proba*100:.2f}%**")
+            st.success(f"**Clasificación:** {label}\n\nProbabilidad estimada: **{proba*100:.2f}%**")
 
-        st.markdown("#### Datos ingresados")
+        st.write("### Datos ingresados")
         st.dataframe(df)
 
-        st.info("Interpretar siempre junto con evaluación clínica.")
+        st.info("Este resultado debe interpretarse junto con la evaluación clínica profesional.")
 
-# ======================================================================
+# =====================================================
 # TAB 2 — DISEÑO DEL MODELO
-# ======================================================================
+# =====================================================
 with T2:
 
     st.header("📘 Diseño del Modelo")
 
-    st.subheader("🧩 Información del Pipeline")
-
     pos_label = [k for k, v in LABEL_MAP.items() if v == 1][0]
+
+    st.subheader("🧩 Información del pipeline")
 
     cfg_df = pd.DataFrame({
         "Parámetro": [
@@ -165,26 +162,21 @@ with T2:
             len(FEATURES)
         ]
     })
-
     st.table(cfg_df)
 
     st.subheader("🔧 Pasos del Pipeline")
-    steps = [{"Paso": name, "Tipo": type(step).__name__}
-             for name, step in PIPE.named_steps.items()]
+    steps = [{"Paso": name, "Tipo": type(step).__name__} for name, step in PIPE.named_steps.items()]
     st.table(pd.DataFrame(steps))
 
     st.subheader("📊 Métricas del Modelo")
-    metrics_df = pd.DataFrame(POLICY["test_metrics"].items(), columns=["Métrica", "Valor"])
-    st.table(metrics_df)
+    st.table(pd.DataFrame(POLICY["test_metrics"].items(), columns=["Métrica", "Valor"]))
 
     st.subheader("📁 Variables de Entrada")
-    vars_df = pd.DataFrame({"Variable": FEATURES})
-    st.table(vars_df)
+    st.table(pd.DataFrame({"Variable": FEATURES}))
 
-
-# ======================================================================
-# TAB 3 — IMPORTANCIA DE VARIABLES (Método Alternativo Compatible)
-# ======================================================================
+# =====================================================
+# TAB 3 — IMPORTANCIA DE VARIABLES (CORREGIDO)
+# =====================================================
 with T3:
 
     st.header("📊 Importancia de Variables")
@@ -193,49 +185,37 @@ with T3:
         """
         ### 🧠 ¿Qué significa esta gráfica?
 
-        Este análisis muestra **qué tan sensible es el modelo** frente a cada variable.
-        El procedimiento es el siguiente:
-
-        1. Se crea un registro clínico *neutro* con valores base.
-        2. Se modifica **solo una variable a la vez**.
-        3. Se calcula nuevamente la probabilidad de riesgo.
-        4. La diferencia obtenida representa la **importancia** de esa variable.
-
-        **Interpretación:**
-        - Barras **altas y positivas** → esa variable aumenta el riesgo cuando cambia.
-        - Barras **pequeñas** → la variable tiene poco impacto en la predicción.
-        - Barras **negativas** (si las hubiera) → al modificar esa variable, el riesgo baja.
-
-        > 🔍 *Este método es totalmente compatible con pipelines que incluyen 
-        OneHotEncoder, StandardScaler y modelos entrenados con SMOTE.*
+        Se toma un registro *neutro* y se modifica **una variable a la vez**.
+        Se mide cuánto cambia la probabilidad estimada.
+        
+        - Barras altas → variable aumenta el riesgo.
+        - Barras bajas → poca influencia.
+        - Compatible con pipelines con OneHotEncoder + StandardScaler + SMOTE.
         """
     )
 
-    st.write("### Sensibilidad del Modelo")
+    st.write("### Sensibilidad del modelo")
 
-    # ---------------------------------------
-    # 1. Crear registro neutro
-    # ---------------------------------------
+    # Obtener columnas categóricas desde el pipeline REAL
+    preprocessor = PIPE.named_steps["preprocessor"]
+    numeric_cols = preprocessor.transformers_[0][2]
+    categorical_cols = preprocessor.transformers_[1][2]
+
+    # Crear registro neutro correcto
     base = {}
     for col in FEATURES:
-        if isinstance(INPUT_SCHEMA[col], str) and INPUT_SCHEMA[col] == "string":
-            base[col] = "NO"      # categoría base
-        else:
-            base[col] = 0         # valor numérico base
+        base[col] = "NO" if col in categorical_cols else 0
 
     df_base = pd.DataFrame([base])
     proba_base = PIPE.predict_proba(df_base)[0][1]
 
-    # ---------------------------------------
-    # 2. Calcular importancia de cada variable
-    # ---------------------------------------
+    # Calcular impacto variable por variable
     impacts = []
     for col in FEATURES:
 
         df_temp = df_base.copy()
 
-        # Alterar variable según tipo
-        if isinstance(INPUT_SCHEMA[col], str) and INPUT_SCHEMA[col] == "string":
+        if col in categorical_cols:
             df_temp[col] = "SI"
         else:
             df_temp[col] = df_temp[col] + 1
@@ -249,19 +229,14 @@ with T3:
 
     impacts_df = pd.DataFrame(impacts).sort_values("Impacto", ascending=False)
 
-    # ---------------------------------------
-    # 3. Gráfico
-    # ---------------------------------------
+    # Gráfico
     fig, ax = plt.subplots(figsize=(9, 4))
     ax.bar(impacts_df["Variable"], impacts_df["Impacto"], color="#0077cc")
-    ax.set_title("Importancia de cada variable en la predicción")
+    ax.set_title("Importancia de cada variable")
     ax.set_ylabel("Cambio en probabilidad")
     ax.set_xticklabels(impacts_df["Variable"], rotation=45, ha="right")
-
     st.pyplot(fig)
 
-    # ---------------------------------------
-    # 4. Tabla final
-    # ---------------------------------------
+    # Tabla final
     st.write("### Tabla de importancia (ordenada)")
     st.dataframe(impacts_df)
