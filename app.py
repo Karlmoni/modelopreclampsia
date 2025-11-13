@@ -15,6 +15,19 @@ st.set_page_config(
 )
 
 # ================================
+# ENCABEZADO FIJO (NO SE OCULTA)
+# ================================
+st.title("🩺 Predicción de Riesgo de Preeclampsia")
+st.write(
+    """
+Esta aplicación usa un modelo de *Machine Learning* entrenado para estimar 
+el **riesgo de preeclampsia** en gestantes.
+
+> ⚠️ **Aviso:** herramienta de apoyo académico. No reemplaza evaluación clínica profesional.
+"""
+)
+
+# ================================
 # Cargar artefactos
 # ================================
 ART_DIR = os.path.join("artefactos", "v1")
@@ -47,71 +60,11 @@ def load_artifacts():
 PIPE, INPUT_SCHEMA, LABEL_MAP, REV_LABEL, THRESHOLD, FEATURES, POLICY = load_artifacts()
 
 
-# ==============================================
-# Funciones auxiliares
-# ==============================================
-def _coerce_and_align(df: pd.DataFrame) -> pd.DataFrame:
-    for c, t in INPUT_SCHEMA.items():
-        if c not in df.columns:
-            df[c] = np.nan
-
-        t_str = str(t).lower()
-        if t_str.startswith(("int", "float")):
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-        elif t_str in ("bool", "boolean"):
-            df[c] = df[c].astype("bool")
-        else:
-            df[c] = df[c].astype("string")
-
-    return df[FEATURES]
-
-
-def predict_batch(records, thr=None):
-    thr = THRESHOLD if thr is None else float(thr)
-
-    if isinstance(records, dict):
-        records = [records]
-
-    df = _coerce_and_align(pd.DataFrame(records))
-    proba = PIPE.predict_proba(df)[:, 1]
-    preds = (proba >= thr).astype(int)
-
-    results = []
-    for p, y in zip(proba, preds):
-        results.append(
-            {
-                "proba": float(p),
-                "pred_int": int(y),
-                "pred_label": REV_LABEL[int(y)],
-                "threshold": thr,
-            }
-        )
-    return results
-
-
 # ================================
-# TABS
+# Sidebar: info del modelo
 # ================================
-tab_pred, tab_model = st.tabs(["🩺 Predicción", "📘 Diseño del Modelo"])
-
-
-# ================================
-# TAB 1 — PREDICCIÓN (TU CÓDIGO ORIGINAL)
-# ================================
-with tab_pred:
-
-    st.title("🩺 Predicción de Riesgo de Preeclampsia")
-    st.write(
-        """
-Esta aplicación usa un modelo de *Machine Learning* entrenado para estimar 
-el **riesgo de preeclampsia** en gestantes.
-
-> ⚠️ *Herramienta académica, no reemplaza evaluación clínica profesional.*
-"""
-    )
-
-    st.sidebar.header("ℹ️ Información del modelo")
-    st.sidebar.markdown(f"""
+st.sidebar.header("ℹ️ Información del modelo")
+st.sidebar.markdown(f"""
 **Modelo ganador:** `{POLICY['winner']}`  
 **Umbral de decisión:** `{THRESHOLD:.2f}`  
 
@@ -123,7 +76,18 @@ el **riesgo de preeclampsia** en gestantes.
 - PR-AUC = `{POLICY['test_metrics']['pr_auc']:.3f}`
 """)
 
-    # Formulario
+
+# ================================
+# PESTAÑAS (ENCABEZADO SE MANTIENE ARRIBA)
+# ================================
+tab_pred, tab_model = st.tabs(["🩺 Predicción", "📘 Diseño del Modelo"])
+
+
+# ======================================================
+# TAB 1 — PREDICCIÓN (TAL COMO TU CÓDIGO ORIGINAL)
+# ======================================================
+with tab_pred:
+
     st.subheader("📋 Ingrese los datos clínicos de la paciente")
 
     with st.form("form_paciente"):
@@ -144,7 +108,6 @@ el **riesgo de preeclampsia** en gestantes.
 
         submitted = st.form_submit_button("Calcular riesgo")
 
-    # Resultado
     if submitted:
         payload = {
             "edad": edad,
@@ -158,43 +121,40 @@ el **riesgo de preeclampsia** en gestantes.
             "tec_repro_asistida": tec_repro_asistida,
         }
 
-        results = predict_batch(payload)
-        res = results[0]
+        # Predicción
+        df = pd.DataFrame([payload])
+        df2 = df.copy()
 
-        proba_pct = res["proba"] * 100
-        label = res["pred_label"]
+        results = PIPE.predict_proba(df2)[0][1]
+        pred = int(results >= THRESHOLD)
+        label = REV_LABEL[pred]
+
+        proba_pct = results * 100
 
         st.markdown("---")
         st.subheader("🔍 Resultado del modelo")
 
         if label == "RIESGO":
-            st.error(
-                f"**Clasificación:** {label}\n\n"
-                f"Probabilidad estimada: **{proba_pct:.2f}%** "
-                f"(umbral = {res['threshold']:.2f})"
-            )
+            st.error(f"**Clasificación:** {label}\n\nProbabilidad: **{proba_pct:.2f}%**")
         else:
-            st.success(
-                f"**Clasificación:** {label}\n\n"
-                f"Probabilidad estimada: **{proba_pct:.2f}%** "
-                f"(umbral = {res['threshold']:.2f})"
-            )
+            st.success(f"**Clasificación:** {label}\n\nProbabilidad: **{proba_pct:.2f}%**")
 
         st.markdown("#### Datos ingresados")
-        st.dataframe(pd.DataFrame([payload]))
+        st.dataframe(df)
 
-        st.info("Este resultado debe interpretarse siempre junto con una evaluación médica.")
+        st.info("Interpretar siempre junto con evaluación clínica.")
 
 
-# ================================
+# ======================================================
 # TAB 2 — DISEÑO DEL MODELO
-# ================================
+# ======================================================
 with tab_model:
 
     st.title("📘 Diseño del Modelo")
 
-    # Información general
+    # -------- CONFIGURACIÓN DEL PIPELINE --------
     st.subheader("🧩 Información del pipeline")
+
     pos_label = [k for k, v in LABEL_MAP.items() if v == 1][0]
 
     cfg_df = pd.DataFrame({
@@ -216,19 +176,22 @@ with tab_model:
 
     st.table(cfg_df)
 
-    # Pasos del pipeline
+    # -------- PASOS DEL PIPELINE --------
     st.subheader("🔧 Pasos del pipeline")
+
     steps = [{"Paso": name, "Tipo": type(step).__name__}
              for name, step in PIPE.named_steps.items()]
 
     st.table(pd.DataFrame(steps))
 
-    # Métricas
+    # -------- MÉTRICAS --------
     st.subheader("📊 Métricas del modelo")
+
     metrics_df = pd.DataFrame(POLICY["test_metrics"].items(), columns=["Métrica", "Valor"])
     st.table(metrics_df)
 
-    # Variables
+    # -------- VARIABLES DE ENTRADA --------
     st.subheader("📁 Variables de entrada")
+
     vars_df = pd.DataFrame({"Variable": FEATURES})
     st.table(vars_df)
