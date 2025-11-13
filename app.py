@@ -136,15 +136,15 @@ with T1:
         st.info("Este resultado debe interpretarse junto con la evaluación clínica profesional.")
 
 # =====================================================
-# TAB 2 — DISEÑO DEL MODELO
+# TAB 2 — DISEÑO DEL MODELO (UNIFORME CON PESTAÑA 1)
 # =====================================================
 with T2:
 
-    st.header("📘 Diseño del Modelo")
+    st.subheader("📘 Diseño del Modelo")
 
     pos_label = [k for k, v in LABEL_MAP.items() if v == 1][0]
 
-    st.subheader("🧩 Información del Pipeline")
+    st.markdown("### 🧩 Información del Pipeline")
 
     cfg_df = pd.DataFrame({
         "Parámetro": [
@@ -164,12 +164,12 @@ with T2:
     })
     st.table(cfg_df)
 
-    st.subheader("🔧 Pasos del Pipeline")
+    st.markdown("### 🔧 Pasos del Pipeline")
     steps = [{"Paso": name, "Tipo": type(step).__name__} for name, step in PIPE.named_steps.items()]
     st.table(pd.DataFrame(steps))
 
-    st.subheader("📊 Métricas del Modelo")
+    st.markdown("### 📊 Métricas del Modelo")
     st.table(pd.DataFrame(POLICY["test_metrics"].items(), columns=["Métrica", "Valor"]))
 
-    st.subheader("📁 Variables de Entrada")
+    st.markdown("### 📁 Variables de Entrada")
     st.table(pd.DataFrame({"Variable": FEATURES}))
