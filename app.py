@@ -5,31 +5,29 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ================================
-# Configuración general de la app
-# ================================
+# =====================================================
+# CONFIGURACIÓN GENERAL (ENCABEZADO FIJO)
+# =====================================================
 st.set_page_config(
     page_title="Riesgo de Preeclampsia",
     page_icon="🩺",
     layout="centered"
 )
 
-# ================================
-# ENCABEZADO FIJO (NO SE OCULTA)
-# ================================
 st.title("🩺 Predicción de Riesgo de Preeclampsia")
 st.write(
     """
 Esta aplicación usa un modelo de *Machine Learning* entrenado para estimar 
 el **riesgo de preeclampsia** en gestantes.
 
-> ⚠️ **Aviso:** herramienta de apoyo académico. No reemplaza evaluación clínica profesional.
+> ⚠️ **Aviso importante:** esta herramienta es solo de apoyo académico y no reemplaza 
+> el criterio clínico ni la evaluación médica profesional.
 """
 )
 
-# ================================
-# Cargar artefactos
-# ================================
+# =====================================================
+# CARGA DE ARTEFACTOS
+# =====================================================
 ART_DIR = os.path.join("artefactos", "v1")
 
 @st.cache_resource
@@ -56,13 +54,12 @@ def load_artifacts():
 
     return pipe, input_schema, label_map, rev_label, threshold, features, policy
 
-
 PIPE, INPUT_SCHEMA, LABEL_MAP, REV_LABEL, THRESHOLD, FEATURES, POLICY = load_artifacts()
 
 
-# ================================
-# Sidebar: info del modelo
-# ================================
+# =====================================================
+# BARRA LATERAL — INFORMACIÓN DEL MODELO
+# =====================================================
 st.sidebar.header("ℹ️ Información del modelo")
 st.sidebar.markdown(f"""
 **Modelo ganador:** `{POLICY['winner']}`  
@@ -77,15 +74,16 @@ st.sidebar.markdown(f"""
 """)
 
 
-# ================================
-# PESTAÑAS (ENCABEZADO SE MANTIENE ARRIBA)
-# ================================
-tab_pred, tab_model = st.tabs(["🩺 Predicción", "📘 Diseño del Modelo"])
+# =====================================================
+# PESTAÑAS — LETRA IGUAL EN AMBAS
+# =====================================================
+tab_pred, tab_model = st.tabs(
+    ["🩺 Predicción", "📘 Diseño del Modelo"]
+)
 
-
-# ======================================================
-# TAB 1 — PREDICCIÓN (TAL COMO TU CÓDIGO ORIGINAL)
-# ======================================================
+# ======================================================================
+# TAB 1 — PREDICCIÓN (TAL COMO TU ORIGINAL, SOLO CORREGIDO SI/NO)
+# ======================================================================
 with tab_pred:
 
     st.subheader("📋 Ingrese los datos clínicos de la paciente")
@@ -96,19 +94,30 @@ with tab_pred:
         with col1:
             edad = st.number_input("Edad (años)", 10, 60, 30)
             imc = st.number_input("IMC", 10.0, 60.0, 25.0, 0.1)
-            p_sis = st.number_input("Presión sistólica", 70, 250, 120)
-            p_dia = st.number_input("Presión diastólica", 40, 150, 80)
+            p_sis = st.number_input("Presión arterial sistólica", 70, 250, 120)
+            p_dia = st.number_input("Presión arterial diastólica", 40, 150, 80)
 
         with col2:
-            hipertension = st.selectbox("Hipertensión", [0, 1], format_func=lambda x: "No" if x == 0 else "Sí")
-            diabetes = st.selectbox("Diabetes", [0, 1], format_func=lambda x: "No" if x == 0 else "Sí")
-            ant_fam_hiper = st.selectbox("Antecedentes familiares de hipertensión", [0, 1], format_func=lambda x: "No" if x == 0 else "Sí")
-            tec_repro_asistida = st.selectbox("Técnica de reproducción asistida", [0, 1], format_func=lambda x: "No" if x == 0 else "Sí")
-            creatinina = st.number_input("Creatinina (mg/dL)", 0.1, 5.0, 0.8, 0.1)
+            hipertension = st.selectbox("Antecedente de hipertensión", ["NO", "SI"])
+            diabetes = st.selectbox("Antecedente de diabetes", ["NO", "SI"])
+            ant_fam_hiper = st.selectbox("Antecedentes familiares de hipertensión", ["NO", "SI"])
+            tec_repro_asistida = st.selectbox("Técnica de reproducción asistida", ["NO", "SI"])
+
+            creatinina = st.number_input(
+                "Creatinina (mg/dL)",
+                min_value=0.1,
+                max_value=5.0,
+                value=0.8,
+                step=0.1,
+            )
 
         submitted = st.form_submit_button("Calcular riesgo")
 
+    # -----------------------
+    # PREDICCIÓN DEL MODELO
+    # -----------------------
     if submitted:
+
         payload = {
             "edad": edad,
             "imc": imc,
@@ -121,23 +130,20 @@ with tab_pred:
             "tec_repro_asistida": tec_repro_asistida,
         }
 
-        # Predicción
         df = pd.DataFrame([payload])
-        df2 = df.copy()
 
-        results = PIPE.predict_proba(df2)[0][1]
-        pred = int(results >= THRESHOLD)
+        # Salida del modelo
+        proba = PIPE.predict_proba(df)[0][1]
+        pred = int(proba >= THRESHOLD)
         label = REV_LABEL[pred]
-
-        proba_pct = results * 100
 
         st.markdown("---")
         st.subheader("🔍 Resultado del modelo")
 
         if label == "RIESGO":
-            st.error(f"**Clasificación:** {label}\n\nProbabilidad: **{proba_pct:.2f}%**")
+            st.error(f"**Clasificación:** {label}\n\nProbabilidad: **{proba*100:.2f}%**")
         else:
-            st.success(f"**Clasificación:** {label}\n\nProbabilidad: **{proba_pct:.2f}%**")
+            st.success(f"**Clasificación:** {label}\n\nProbabilidad: **{proba*100:.2f}%**")
 
         st.markdown("#### Datos ingresados")
         st.dataframe(df)
@@ -145,15 +151,17 @@ with tab_pred:
         st.info("Interpretar siempre junto con evaluación clínica.")
 
 
-# ======================================================
-# TAB 2 — DISEÑO DEL MODELO
-# ======================================================
+# ======================================================================
+# TAB 2 — DISEÑO DEL MODELO (NUEVA SECCIÓN)
+# ======================================================================
 with tab_model:
 
-    st.title("📘 Diseño del Modelo")
+    st.header("📘 Diseño del Modelo")
 
-    # -------- CONFIGURACIÓN DEL PIPELINE --------
-    st.subheader("🧩 Información del pipeline")
+    # -----------------------------
+    # CONFIGURACIÓN DEL PIPELINE
+    # -----------------------------
+    st.subheader("🧩 Información del Pipeline")
 
     pos_label = [k for k, v in LABEL_MAP.items() if v == 1][0]
 
@@ -176,22 +184,28 @@ with tab_model:
 
     st.table(cfg_df)
 
-    # -------- PASOS DEL PIPELINE --------
-    st.subheader("🔧 Pasos del pipeline")
+    # -----------------------------
+    # PASOS DEL PIPELINE
+    # -----------------------------
+    st.subheader("🔧 Pasos del Pipeline")
 
     steps = [{"Paso": name, "Tipo": type(step).__name__}
              for name, step in PIPE.named_steps.items()]
 
     st.table(pd.DataFrame(steps))
 
-    # -------- MÉTRICAS --------
-    st.subheader("📊 Métricas del modelo")
+    # -----------------------------
+    # MÉTRICAS DEL MODELO
+    # -----------------------------
+    st.subheader("📊 Métricas del Modelo")
 
     metrics_df = pd.DataFrame(POLICY["test_metrics"].items(), columns=["Métrica", "Valor"])
     st.table(metrics_df)
 
-    # -------- VARIABLES DE ENTRADA --------
-    st.subheader("📁 Variables de entrada")
+    # -----------------------------
+    # VARIABLES DE ENTRADA
+    # -----------------------------
+    st.subheader("📁 Variables de Entrada")
 
     vars_df = pd.DataFrame({"Variable": FEATURES})
     st.table(vars_df)
