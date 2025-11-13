@@ -28,7 +28,7 @@ el **riesgo de preeclampsia** en gestantes.
 )
 
 # =====================================================
-# CARGA DE ARTEFACTOS
+# CARGAR ARTEFACTOS
 # =====================================================
 ART_DIR = os.path.join("artefactos", "v1")
 
@@ -58,7 +58,6 @@ def load_artifacts():
 
 PIPE, INPUT_SCHEMA, LABEL_MAP, REV_LABEL, THRESHOLD, FEATURES, POLICY = load_artifacts()
 
-
 # =====================================================
 # SIDEBAR
 # =====================================================
@@ -75,16 +74,15 @@ st.sidebar.markdown(f"""
 - PR-AUC = `{POLICY['test_metrics']['pr_auc']:.3f}`
 """)
 
-
 # =====================================================
-# PESTAÑAS (TIPO DE LETRA Y TAMAÑO IGUAL)
+# PESTAÑAS — LETRA Y TAMAÑO IGUAL
 # =====================================================
 T1, T2, T3 = st.tabs(
     ["🩺 Predicción", "📘 Diseño del Modelo", "📊 Importancia de Variables"]
 )
 
 # ======================================================================
-# TAB 1 — PREDICCIÓN (TU DISEÑO ORIGINAL + CORRECCIÓN SI/NO)
+# TAB 1 — PREDICCIÓN
 # ======================================================================
 with T1:
 
@@ -96,27 +94,20 @@ with T1:
         with col1:
             edad = st.number_input("Edad (años)", 10, 60, 30)
             imc = st.number_input("IMC", 10.0, 60.0, 25.0, 0.1)
-            p_sis = st.number_input("Presión arterial sistólica (mmHg)", 70, 250, 120)
-            p_dia = st.number_input("Presión arterial diastólica (mmHg)", 40, 150, 80)
+            p_sis = st.number_input("Presión arterial sistólica", 70, 250, 120)
+            p_dia = st.number_input("Presión arterial diastólica", 40, 150, 80)
 
         with col2:
             hipertension = st.selectbox("Antecedente de hipertensión", ["NO", "SI"])
             diabetes = st.selectbox("Antecedente de diabetes", ["NO", "SI"])
             ant_fam_hiper = st.selectbox("Antecedentes familiares de hipertensión", ["NO", "SI"])
             tec_repro_asistida = st.selectbox("Técnica de reproducción asistida", ["NO", "SI"])
-
-            creatinina = st.number_input(
-                "Creatinina (mg/dL)",
-                min_value=0.1,
-                max_value=5.0,
-                value=0.8,
-                step=0.1,
-            )
+            creatinina = st.number_input("Creatinina (mg/dL)", 0.1, 5.0, 0.8, 0.1)
 
         submitted = st.form_submit_button("Calcular riesgo")
 
+    # Predicción
     if submitted:
-
         payload = {
             "edad": edad,
             "imc": imc,
@@ -130,7 +121,6 @@ with T1:
         }
 
         df = pd.DataFrame([payload])
-
         proba = PIPE.predict_proba(df)[0][1]
         pred = int(proba >= THRESHOLD)
         label = REV_LABEL[pred]
@@ -148,7 +138,6 @@ with T1:
 
         st.info("Interpretar siempre junto con evaluación clínica.")
 
-
 # ======================================================================
 # TAB 2 — DISEÑO DEL MODELO
 # ======================================================================
@@ -156,7 +145,6 @@ with T2:
 
     st.header("📘 Diseño del Modelo")
 
-    # CONFIGURACIÓN DEL PIPELINE
     st.subheader("🧩 Información del Pipeline")
 
     pos_label = [k for k, v in LABEL_MAP.items() if v == 1][0]
@@ -180,52 +168,60 @@ with T2:
 
     st.table(cfg_df)
 
-    # PASOS DEL PIPELINE
     st.subheader("🔧 Pasos del Pipeline")
     steps = [{"Paso": name, "Tipo": type(step).__name__}
              for name, step in PIPE.named_steps.items()]
     st.table(pd.DataFrame(steps))
 
-    # MÉTRICAS
     st.subheader("📊 Métricas del Modelo")
     metrics_df = pd.DataFrame(POLICY["test_metrics"].items(), columns=["Métrica", "Valor"])
     st.table(metrics_df)
 
-    # VARIABLES
     st.subheader("📁 Variables de Entrada")
     vars_df = pd.DataFrame({"Variable": FEATURES})
     st.table(vars_df)
 
 
 # ======================================================================
-# TAB 3 — IMPORTANCIA DE VARIABLES (PERMUTATION IMPORTANCE)
+# TAB 3 — IMPORTANCIA DE VARIABLES (CORREGIDO)
 # ======================================================================
 with T3:
 
     st.header("📊 Importancia de Variables (Permutation Importance)")
 
     st.write(
-        "Este gráfico muestra cuánto afecta cada variable a la predicción "
-        "cuando se altera su valor bajo condiciones controladas."
+        "Este gráfico muestra cuánto afecta cada variable a la predicción cuando se altera su valor."
     )
 
-    # ----------- CREAR EJEMPLO NEUTRAL ----------
-    example = {col: ["NO"] if INPUT_SCHEMA[col] == "string" else [0] for col in FEATURES}
-    df_example = pd.DataFrame(example)
+    # ---------------------------------------
+    # 1. Crear un dataset sintético válido
+    # ---------------------------------------
+    base_row = {}
 
-    # ----------- CALCULAR IMPORTANCIA -----------
+    for col in FEATURES:
+        if isinstance(INPUT_SCHEMA[col], str) and INPUT_SCHEMA[col] == "string":
+            base_row[col] = "NO"
+        else:
+            base_row[col] = 0
+
+    df_example = pd.DataFrame([base_row] * 30)  # 30 filas idénticas
+
+    # ---------------------------------------
+    # 2. Calcular permutation importance
+    # ---------------------------------------
     result = permutation_importance(
         PIPE,
         df_example,
         PIPE.predict_proba,
-        scoring=None,
-        n_repeats=12,
+        n_repeats=10,
         random_state=42
     )
 
     importances = result.importances_mean
 
-    # ----------- GRÁFICO -----------
+    # ---------------------------------------
+    # 3. Graficar
+    # ---------------------------------------
     fig, ax = plt.subplots(figsize=(9, 4))
     ax.bar(FEATURES, importances, color="#0077cc")
     ax.set_title("Importancia de cada variable en la predicción")
