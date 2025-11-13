@@ -1,47 +1,95 @@
 import os
 import json
 import joblib
-import shap
 import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 
+from sklearn.inspection import permutation_importance
+from lime.lime_tabular import LimeTabularExplainer
+
 # ===============================
-# CONFIGURACIÓN GENERAL
+# CONFIGURACIÓN GENERAL + DISEÑO
 # ===============================
 st.set_page_config(
-    page_title="Predicción de Preeclampsia",
+    page_title="Predicción de Preeclampsia — IA",
     page_icon="🩺",
     layout="wide",
 )
 
-# ESTILOS CSS PROFESIONALES
-st.markdown(
-    """
-    <style>
-        body {
-            background-color: #f4f6f9;
-        }
-        .card {
-            background-color: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0px 4px 10px rgba(0,0,0,0.08);
-            border: 1px solid #e5e5e5;
-        }
-        .result {
-            font-size: 36px;
-            font-weight: 800;
-            color: #1e3799;
-            text-align: center;
-        }
-        .risk-high { color: #e55039 !important; }
-        .risk-low { color: #1e90ff !important; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# ===== DISEÑO FUTURISTA / TECNOLÓGICO (CSS) =====
+st.markdown("""
+<style>
+
+    /* Background futurista */
+    .stApp {
+        background: linear-gradient(135deg, #0a0f24 0%, #1a2a4a 50%, #0e1830 100%);
+        color: #e6e6e6;
+    }
+
+    h1, h2, h3 {
+        color: #9bc9ff !important;
+        font-weight: 700;
+    }
+
+    /* Tarjetas estilo Glass */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.07);
+        backdrop-filter: blur(12px);
+        border-radius: 16px;
+        padding: 25px;
+        border: 1px solid rgba(255,255,255,0.15);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+        margin-bottom: 20px;
+    }
+
+    /* Botón futurista */
+    div.stButton > button {
+        background: linear-gradient(135deg, #3c8bff, #6bc1ff);
+        border-radius: 10px;
+        color: white;
+        border: none;
+        font-size: 18px;
+        font-weight: 600;
+        padding: 10px 26px;
+        transition: 0.25s;
+    }
+    div.stButton > button:hover {
+        background: linear-gradient(135deg, #6bc1ff, #3c8bff);
+        transform: scale(1.05);
+    }
+
+    /* Neón para riesgo */
+    .neon-high {
+        color: #ff6b6b;
+        text-shadow: 0 0 8px rgba(255, 107, 107, 0.8);
+        font-size: 42px;
+        font-weight: 900;
+        text-align: center;
+    }
+    .neon-low {
+        color: #6bffb0;
+        text-shadow: 0 0 8px rgba(107, 255, 176, 0.8);
+        font-size: 42px;
+        font-weight: 900;
+        text-align: center;
+    }
+
+    /* Chips modernos */
+    .chip {
+        background: rgba(255, 255, 255, 0.12);
+        padding: 10px 16px;
+        border-radius: 12px;
+        margin: 5px;
+        display: inline-block;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: inset 0 0 8px rgba(255,255,255,0.25);
+    }
+
+</style>
+""", unsafe_allow_html=True)
 
 # ===============================
 # CARGA DE ARTEFACTOS
@@ -66,34 +114,16 @@ def load_artifacts():
     threshold = float(policy["threshold"])
 
     pipeline = joblib.load(os.path.join(ART_DIR, f"pipeline_{model_name}.joblib"))
-    
+
     return pipeline, input_schema, label_map, rev_label, threshold, policy
 
 
 PIPE, INPUT_SCHEMA, LABEL_MAP, REV_LABEL, THRESHOLD, POLICY = load_artifacts()
 FEATURES = list(INPUT_SCHEMA.keys())
 
-# ===============================
-# SHAP EXPLAINER (KERNEL)
-# ===============================
-@st.cache_resource
-def load_shap_explainer():
-    background = pd.DataFrame(
-        [np.zeros(len(FEATURES))], 
-        columns=FEATURES
-    )
-    return shap.KernelExplainer(PIPE.predict_proba, background)
-
-
-explainer = load_shap_explainer()
-
-def explain_instance(instance_df):
-    shap_values = explainer.shap_values(instance_df)
-    return shap_values
-
 
 # ===============================
-# FUNCIÓN DE PREDICCIÓN
+# FUNCIONES DE PREDICCIÓN
 # ===============================
 def preprocess_input(record_dict):
     df = pd.DataFrame([record_dict])
@@ -112,20 +142,21 @@ def predict(record_dict):
 
 
 # ===============================
-# UI - TABS
+# TABS
 # ===============================
 tab_pred, tab_interp, tab_info = st.tabs([
     "🩺 Predicción",
-    "🔍 Interpretabilidad SHAP",
+    "🔍 Interpretabilidad IA",
     "📘 Acerca del Modelo"
 ])
 
 # ========================================================
-# 🩺 TAB 1 — PREDICCIÓN
+# 🩺 TAB 1 — PREDICCIÓN TECNOLÓGICA
 # ========================================================
 with tab_pred:
-    st.title("🩺 Predicción de Riesgo de Preeclampsia")
-    st.write("Complete los datos clínicos para obtener una evaluación basada en un modelo de Machine Learning.")
+    st.title("🩺 Predicción de Riesgo de Preeclampsia — IA")
+
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
@@ -139,7 +170,7 @@ with tab_pred:
         hipert = st.selectbox("Hipertensión", ["NO", "SI"])
         diab = st.selectbox("Diabetes", ["NO", "SI"])
         creat = st.number_input("Creatinina", 0.1, 5.0, 0.8)
-        fam = st.selectbox("Antecedente Familiar de Hipertensión", ["NO", "SI"])
+        fam = st.selectbox("Antecedente Familiar Hipertensión", ["NO", "SI"])
         repr = st.selectbox("Reproducción Asistida", ["NO", "SI"])
 
     if st.button("🔍 Calcular Riesgo", use_container_width=True):
@@ -156,84 +187,97 @@ with tab_pred:
         }
 
         proba, pred, df_input = predict(payload)
-        label = REV_LABEL[pred]
         pct = round(proba * 100, 2)
+        label = REV_LABEL[pred]
 
-        color_class = "risk-high" if pred == 1 else "risk-low"
-
-        st.markdown(
-            f"""
-            <div class="card">
-                <h3 class="result {color_class}">{label}</h3>
-                <p class="result {color_class}">{pct}%</p>
-                <p style="text-align:center;">
-                Probabilidad estimada de riesgo.
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        # Explicación clínica simple
-        st.subheader("📝 Interpretación Clínica (Automática)")
         if pred == 1:
-            st.warning(
-                """
-                El modelo identifica un riesgo ELEVADO de preeclampsia.
-                Se recomienda vigilancia estricta, control de PA y evaluación profesional.
-                """
-            )
+            st.markdown(f"<p class='neon-high'>{label} — {pct}%</p>", unsafe_allow_html=True)
+            st.warning("La IA detecta factores asociados a un riesgo ELEVADO. Requiere seguimiento clínico.")
         else:
-            st.success(
-                """
-                El modelo estima un riesgo BAJO.  
-                Aun así, se recomienda control rutinario y seguimiento clínico normal.
-                """
-            )
+            st.markdown(f"<p class='neon-low'>{label} — {pct}%</p>", unsafe_allow_html=True)
+            st.success("Riesgo bajo según la IA. Mantener control prenatal rutinario.")
 
         st.subheader("📄 Datos ingresados")
         st.dataframe(pd.DataFrame([payload]), use_container_width=True)
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 # ========================================================
-# 🔍 TAB 2 — INTERPRETABILIDAD SHAP
+# 🔍 TAB 2 — INTERPRETABILIDAD (GLOBAL + LIME)
 # ========================================================
 with tab_interp:
-    st.title("🔍 Interpretabilidad del Modelo (SHAP)")
-    st.write("Visualice cómo cada variable influye en la predicción.")
+    st.title("🔍 Interpretabilidad Avanzada del Modelo")
 
-    if st.button("Generar Interpretación SHAP"):
-        shap_df = df_input.copy()
-        shap_values = explain_instance(shap_df)
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.subheader("🚀 Importancia Global de Variables")
 
-        st.subheader("📊 Waterfall (Explicación Individual)")
-        fig, ax = plt.subplots(figsize=(10, 5))
-        shap.waterfall_plot(
-            shap.Explanation(
-                shap_values[1][0],
-                feature_names=FEATURES,
-                data=shap_df.iloc[0].values
-            )
+    try:
+        sample_df = pd.DataFrame([{k: 0 for k in FEATURES}])
+        perm = permutation_importance(PIPE, sample_df, PIPE.predict(sample_df), n_repeats=8)
+
+        importances = pd.DataFrame({
+            "Variable": FEATURES,
+            "Importancia": perm["importances_mean"]
+        }).sort_values("Importancia", ascending=False)
+
+        for idx, row in importances.iterrows():
+            st.markdown(f"<span class='chip'>{row['Variable']}: {row['Importancia']:.4f}</span>", unsafe_allow_html=True)
+
+        st.bar_chart(importances.set_index("Variable"))
+
+    except Exception as e:
+        st.warning(f"No se pudo calcular importancia global: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<hr>", unsafe_allow_html=True)
+
+    # ========= LOCAL (LIME) =========
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.subheader("🤖 Interpretación Individual con LIME")
+
+    if "df_input" not in locals():
+        st.info("⚠ Primero realiza una predicción.")
+    else:
+        explainer = LimeTabularExplainer(
+            training_data=np.zeros((1, len(FEATURES))),
+            feature_names=FEATURES,
+            class_names=["SIN RIESGO", "RIESGO"],
+            mode="classification"
         )
+
+        exp = explainer.explain_instance(df_input.iloc[0].values, PIPE.predict_proba, num_features=6)
+
+        st.write("### 🔬 Factores que influyeron:")
+        st.write(exp.as_list())
+
+        fig = exp.as_pyplot_figure()
         st.pyplot(fig)
 
-        st.subheader("📊 Summary Plot (Importancia Global)")
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        shap.summary_plot(shap_values[1], shap_df, plot_type="bar", show=False)
-        st.pyplot(fig2)
+        if pred == 1:
+            st.markdown("<p class='neon-high'>RIESGO ELEVADO</p>", unsafe_allow_html=True)
+        else:
+            st.markdown("<p class='neon-low'>RIESGO BAJO</p>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ========================================================
-# 📘 TAB 3 — ACERCA DEL MODELO
+# 📘 TAB 3 — INFORMACIÓN
 # ========================================================
 with tab_info:
     st.title("📘 Información del Modelo")
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+
     st.write(f"**Modelo ganador:** {POLICY['winner']}")
     st.write(f"**Umbral de decisión:** {POLICY['threshold']}")
 
-    st.subheader("📊 Métricas en Test")
+    st.subheader("📊 Métricas")
     st.json(POLICY["test_metrics"])
 
-    st.subheader("📁 Variables utilizadas")
+    st.subheader("📁 Variables usadas")
     st.write(FEATURES)
 
-    st.info("""
-    """)
+    st.info("⚠ Esta herramienta es apoyo clínico basado en IA, no reemplaza el criterio médico.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
